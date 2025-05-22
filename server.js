@@ -22,11 +22,18 @@ const limiter = rateLimit({
 });
 
 // 2. Security middlewares
-app.use(cors({ 
-  origin: process.env.CLIENT_ORIGIN,
-  methods: ['POST']
+app.use(cors({
+  origin: function (origin, callback) {
+    const allowed = ['https://www.emisdental.com', 'http://localhost:5173'];
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
 }));
-
 
 app.use(express.json({ limit: '10kb' }));
 
