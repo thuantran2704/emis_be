@@ -24,7 +24,7 @@ const limiter = rateLimit({
 // 2. Security middlewares
 app.use(cors({
   origin: function (origin, callback) {
-    const allowed = ['https://www.emisdental.com', 'http://localhost:5173'];
+    const allowed = ['https://www.emisdental.com', 'http://localhost:5173', 'https://emis-msrt421ce-thuan-trans-projects-0c0003fd.vercel.app'];
     if (!origin || allowed.includes(origin)) {
       callback(null, true);
     } else {
