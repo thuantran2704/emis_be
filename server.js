@@ -24,17 +24,35 @@ const limiter = rateLimit({
 // 2. Security middlewares
 app.use(cors({
   origin: function (origin, callback) {
-    const allowed = ['https://www.emisdental.com', 'http://localhost:5173', 'https://emis-msrt421ce-thuan-trans-projects-0c0003fd.vercel.app'];
-    if (!origin || allowed.includes(origin)) {
+    // Allow all in development
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+
+    const allowed = [
+      'https://www.emisdental.com',
+      'https://emisdental.com',
+      'http://localhost:5173',
+      /\.vercel\.app$/
+    ];
+    
+    if (!origin) return callback(null, true);
+    
+    if (allowed.some(pattern => {
+      return typeof pattern === 'string' 
+        ? origin === pattern 
+        : pattern.test(origin);
+    })) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.warn('Blocked by CORS:', origin);
+      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
     }
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
-  credentials: true
+  methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 app.use(express.json({ limit: '10kb' }));
 
 // Correct sanitization middleware
