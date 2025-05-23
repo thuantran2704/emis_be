@@ -23,5 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
+fly.bat
 npm.bat
 .env

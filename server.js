@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import rateLimit from 'express-rate-limit';
 import sanitizePackage from 'express-mongo-sanitize';
 import Appointment from './models/Appointments.js';
 
@@ -12,16 +11,8 @@ dotenv.config();
 // Create Express app
 const app = express();
 
-// 1. Rate limiting configuration
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 50 requests per window
-  message: 'Too many submissions from this IP, please try again later',
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
 // 2. Security middlewares
+
 app.use(cors({
   origin: function (origin, callback) {
     // Allow all in development
@@ -55,6 +46,16 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10kb' }));
 
+// // 2. Rate limiting configuration
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 50, // Limit each IP to 50 requests per window
+//   message: 'Too many submissions from this IP, please try again later',
+//   standardHeaders: true,
+//   legacyHeaders: false
+// });
+
+
 // Correct sanitization middleware
 app.use((req, _, next) => {
   if (req.body) {
@@ -67,8 +68,8 @@ app.use((req, _, next) => {
 });
 
 
-// Apply rate limiting to appointments endpoint
-app.use('/api/appointments', limiter);
+// // Apply rate limiting to appointments endpoint
+// app.use('/api/appointments', limiter);
 
 // 3. MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -119,8 +120,8 @@ app.post('/api/appointments', async (req, res) => {
 
 // 5. Start server
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on 0.0.0.0:${PORT}`);
 });
 
 // Handle shutdown gracefully
