@@ -20,17 +20,44 @@ const appointmentSchema = new mongoose.Schema({
     trim: true,
     maxlength: 20
   },
-  date: Date,
-  service: String,
+  date: {
+    type: Date,
+    required: [true, 'Appointment date is required']
+  },
+  service: {
+    type: String,
+    required: [true, 'Service is required']
+  },
   message: {
     type: String,
     trim: true,
     maxlength: 500
   },
+  language: {
+    type: String,
+    required: [true, 'Language is required'],
+    enum: ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ar'], // Add more as needed
+    default: 'en'
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'confirmed', 'cancelled', 'completed'],
+    default: 'pending'
+  },
   createdAt: { 
     type: Date, 
     default: Date.now 
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
+});
+
+// Update the updatedAt field before saving
+appointmentSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
 });
 
 export default mongoose.model('Appointment', appointmentSchema);
