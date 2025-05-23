@@ -36,8 +36,8 @@ const appointmentSchema = new mongoose.Schema({
   language: {
     type: String,
     required: [true, 'Language is required'],
-    enum: ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ar'], // Add more as needed
-    default: 'en'
+    enum: ['vietnamese', 'english', 'simplified', 'traditional', 'french', 'korean'],
+    default: 'vietnamese'
   },
   status: {
     type: String,
