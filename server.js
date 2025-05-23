@@ -15,35 +15,25 @@ const app = express();
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow all in development
-    if (process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-
     const allowed = [
       'https://www.emisdental.com',
       'https://emisdental.com',
       'http://localhost:5173',
       /\.vercel\.app$/
     ];
-    
     if (!origin) return callback(null, true);
-    
-    if (allowed.some(pattern => {
-      return typeof pattern === 'string' 
-        ? origin === pattern 
-        : pattern.test(origin);
-    })) {
-      callback(null, true);
+    if (allowed.some(pattern => typeof pattern === 'string' ? origin === pattern : pattern.test(origin))) {
+      return callback(null, true);
     } else {
       console.warn('Blocked by CORS:', origin);
-      callback(new Error(`Not allowed by CORS. Origin: ${origin}`));
+      return callback(new Error(`CORS: Not allowed - ${origin}`));
     }
   },
   methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
 app.use(express.json({ limit: '10kb' }));
 
 // // 2. Rate limiting configuration
