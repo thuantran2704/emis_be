@@ -20,12 +20,29 @@ const appointmentSchema = new mongoose.Schema({
     trim: true,
     maxlength: 20
   },
-  date: Date,
-  service: String,
+  date: {
+    type: Date,
+    required: [true, 'Appointment date is required']
+  },
+  service: {
+    type: String,
+    required: [true, 'Service is required']
+  },
   message: {
     type: String,
     trim: true,
     maxlength: 500
+  },
+  language: {
+    type: String,
+    required: [true, 'Language is required'],
+    enum: ['vietnamese', 'english', 'simplified', 'traditional', 'french', 'korean'],
+    default: 'vietnamese'
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'confirmed', 'cancelled', 'completed'],
+    default: 'pending'
   },
   createdAt: { 
     type: Date, 
