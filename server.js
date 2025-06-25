@@ -4,8 +4,8 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import sanitizePackage from 'express-mongo-sanitize';
 import Appointment from './models/appointments.js';
-
-// Initialize environment variables
+import axios from 'axios';
+// Initialize environment variiables
 dotenv.config();
 
 // Create Express app
