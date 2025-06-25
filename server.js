@@ -102,7 +102,7 @@ app.post('/api/appointments', async (req, res) => {
     }
 
     // 4. Validate required fields
-    const requiredFields = ['name', 'email', 'phone'];
+    const requiredFields = ['name', 'phone'];
     const missingFields = requiredFields.filter(field => !formData[field]);
     
     if (missingFields.length > 0) {
