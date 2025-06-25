@@ -59,39 +59,72 @@ app.post('/api/appointments', async (req, res) => {
     // 1. Extract recaptchaToken and other fields
     const { recaptchaToken, language, ...formData } = req.body;
 
-    // 2. Verify reCAPTCHA first (before processing the form)
+    // 2. Verify reCAPTCHA exists
     if (!recaptchaToken) {
       return res.status(400).json({ 
         success: false,
+        error: "RECAPTCHA_REQUIRED",
         message: "reCAPTCHA verification required" 
       });
     }
 
     // 3. Validate with Google's API
-    const recaptchaResponse = await axios.post(
-      `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`
-    );
+    let recaptchaResponse;
+    try {
+      recaptchaResponse = await axios.post(
+        `https://www.google.com/recaptcha/api/siteverify`,
+        new URLSearchParams({
+          secret: process.env.RECAPTCHA_SECRET_KEY,
+          response: recaptchaToken
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }
+      );
+    } catch (recaptchaError) {
+      console.error('reCAPTCHA API error:', recaptchaError);
+      return res.status(502).json({
+        success: false,
+        error: "RECAPTCHA_SERVICE_ERROR",
+        message: "Unable to verify reCAPTCHA at this time"
+      });
+    }
 
     if (!recaptchaResponse.data.success) {
       return res.status(400).json({
         success: false,
+        error: "RECAPTCHA_FAILED",
         message: "Failed reCAPTCHA verification",
-        errors: recaptchaResponse.data["error-codes"] || []
+        details: recaptchaResponse.data['error-codes'] || []
       });
     }
 
-    // 4. Proceed with your existing validation
+    // 4. Validate required fields
     const requiredFields = ['name', 'email', 'phone'];
     const missingFields = requiredFields.filter(field => !formData[field]);
     
     if (missingFields.length > 0) {
       return res.status(400).json({ 
         success: false,
-        message: `Missing required fields: ${missingFields.join(', ')}` 
+        error: "MISSING_FIELDS",
+        message: `Missing required fields: ${missingFields.join(', ')}`,
+        missingFields
       });
     }
 
-    // 5. Create and save appointment (your existing logic)
+    // 5. Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_EMAIL",
+        message: "Please provide a valid email address"
+      });
+    }
+
+    // 6. Create and save appointment
     const newAppointment = new Appointment({
       name: formData.name.trim().substring(0, 100),
       email: formData.email.trim().toLowerCase().substring(0, 100),
@@ -99,21 +132,42 @@ app.post('/api/appointments', async (req, res) => {
       date: formData.date || undefined,
       service: formData.service || 'General Checkup',
       message: formData.message?.trim().substring(0, 500) || '',
-      language: language // Optional: Store language preference
+      language: language
     });
 
     await newAppointment.save();
     
-    res.status(201).json({ 
+    return res.status(201).json({ 
       success: true,
       message: 'Appointment request received! We will contact you soon.' 
     });
 
   } catch (error) {
-    console.error('🚨 Submission error:', error);
-    res.status(500).json({ 
+    console.error('Submission error:', error);
+
+    // Handle specific database errors
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: "VALIDATION_ERROR",
+        message: "Invalid data provided",
+        details: error.errors
+      });
+    }
+
+    if (error.code === 11000) { // MongoDB duplicate key
+      return res.status(409).json({
+        success: false,
+        error: "DUPLICATE_ENTRY",
+        message: "An appointment with this email already exists"
+      });
+    }
+
+    // Generic server error
+    return res.status(500).json({ 
       success: false,
-      message: 'Failed to process request',
+      error: "SERVER_ERROR",
+      message: 'An unexpected error occurred. Please try again later.'
     });
   }
 });
