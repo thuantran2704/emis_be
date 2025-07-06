@@ -3,9 +3,9 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import sanitizePackage from 'express-mongo-sanitize';
-import Appointment from './models/Appointments.js';
-
-// Initialize environment variables
+import Appointment from './models/appointments.js';
+import axios from 'axios';
+// Initialize environment variiables
 dotenv.config();
 
 // Create Express app
@@ -18,7 +18,6 @@ app.use(cors({
     const allowed = [
       'https://www.emisdental.com',
       'https://emisdental.com',
-      'http://localhost:5173',
       /\.vercel\.app$/
     ];
     if (!origin) return callback(null, true);
@@ -36,16 +35,6 @@ app.use(cors({
 
 app.use(express.json({ limit: '10kb' }));
 
-// // 2. Rate limiting configuration
-// const limiter = rateLimit({
-//   windowMs: 15 * 60 * 1000, // 15 minutes
-//   max: 50, // Limit each IP to 50 requests per window
-//   message: 'Too many submissions from this IP, please try again later',
-//   standardHeaders: true,
-//   legacyHeaders: false
-// });
-
-
 // Correct sanitization middleware
 app.use((req, _, next) => {
   if (req.body) {
@@ -58,10 +47,6 @@ app.use((req, _, next) => {
 });
 
 
-// // Apply rate limiting to appointments endpoint
-// app.use('/api/appointments', limiter);
-
-// 3. MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => {
@@ -69,44 +54,124 @@ mongoose.connect(process.env.MONGODB_URI)
   process.exit(1);
 });
 
-// 4. Form submission endpoint
 app.post('/api/appointments', async (req, res) => {
   try {
-    // Validate required fields
-    const requiredFields = ['name', 'email', 'phone'];
-    const missingFields = requiredFields.filter(field => !req.body[field]);
-    
-    if (missingFields.length > 0) {
+    // 1. Extract recaptchaToken and other fields
+    const { recaptchaToken, language, ...formData } = req.body;
+
+    // 2. Verify reCAPTCHA exists
+    if (!recaptchaToken) {
       return res.status(400).json({ 
-        message: `Missing required fields: ${missingFields.join(', ')}` 
+        success: false,
+        error: "RECAPTCHA_REQUIRED",
+        message: "reCAPTCHA verification required" 
       });
     }
 
-    // Create and save appointment
+    // 3. Validate with Google's API
+    let recaptchaResponse;
+    try {
+      recaptchaResponse = await axios.post(
+        `https://www.google.com/recaptcha/api/siteverify`,
+        new URLSearchParams({
+          secret: process.env.RECAPTCHA_SECRET_KEY,
+          response: recaptchaToken
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        }
+      );
+    } catch (recaptchaError) {
+      console.error('reCAPTCHA API error:', recaptchaError);
+      return res.status(502).json({
+        success: false,
+        error: "RECAPTCHA_SERVICE_ERROR",
+        message: "Unable to verify reCAPTCHA at this time"
+      });
+    }
+
+    if (!recaptchaResponse.data.success) {
+      return res.status(400).json({
+        success: false,
+        error: "RECAPTCHA_FAILED",
+        message: "Failed reCAPTCHA verification",
+        details: recaptchaResponse.data['error-codes'] || []
+      });
+    }
+
+    // 4. Validate required fields
+    const requiredFields = ['name', 'phone'];
+    const missingFields = requiredFields.filter(field => !formData[field]);
+    
+    if (missingFields.length > 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: "MISSING_FIELDS",
+        message: `Missing required fields: ${missingFields.join(', ')}`,
+        missingFields
+      });
+    }
+
+    // 5. Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_EMAIL",
+        message: "Please provide a valid email address"
+      });
+    }
+
+    // 6. Create and save appointment
     const newAppointment = new Appointment({
-      name: req.body.name.trim().substring(0, 100),
-      email: req.body.email.trim().toLowerCase().substring(0, 100),
-      phone: req.body.phone.trim().substring(0, 20),
-      date: req.body.date || undefined,
-      service: req.body.service || 'General Checkup',
-      message: req.body.message?.trim().substring(0, 500) || ''
+      name: formData.name.trim().substring(0, 100),
+      email: formData.email.trim().toLowerCase().substring(0, 100),
+      phone: formData.phone.trim().substring(0, 20),
+      date: formData.date || undefined,
+      service: formData.service || 'General Checkup',
+      message: formData.message?.trim().substring(0, 500) || '',
+      language: language
     });
 
     await newAppointment.save();
     
-    res.status(201).json({ 
+    return res.status(201).json({ 
       success: true,
       message: 'Appointment request received! We will contact you soon.' 
     });
+
   } catch (error) {
-    console.error('🚨 Submission error:', error);
-    res.status(500).json({ 
+    console.error('Submission error:', error);
+
+    // Handle specific database errors
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        error: "VALIDATION_ERROR",
+        message: "Invalid data provided",
+        details: error.errors
+      });
+    }
+
+    if (error.code === 11000) { // MongoDB duplicate key
+      return res.status(409).json({
+        success: false,
+        error: "DUPLICATE_ENTRY",
+        message: "An appointment with this email already exists"
+      });
+    }
+
+    // Generic server error
+    return res.status(500).json({ 
       success: false,
-      message: 'Failed to process request',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: "SERVER_ERROR",
+      message: 'An unexpected error occurred. Please try again later.'
     });
   }
 });
+
 // 5. Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
