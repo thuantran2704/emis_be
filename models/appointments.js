@@ -39,11 +39,6 @@ const appointmentSchema = new mongoose.Schema({
     enum: ['vietnamese', 'english', 'simplified', 'traditional', 'french', 'korean'],
     default: 'vietnamese'
   },
-  status: {
-    type: String,
-    enum: ['pending', 'confirmed', 'cancelled', 'completed'],
-    default: 'pending'
-  },
   createdAt: { 
     type: Date, 
     default: Date.now 
