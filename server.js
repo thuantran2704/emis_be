@@ -145,7 +145,30 @@ app.post('/api/appointments', async (req, res) => {
     });
 
     await newAppointment.save();
-    
+    const notifyList = ['duonglandai@gmail.com', 'thuantran2704@gmail.com', 'quoctritran2000@gmail.com'];
+
+    const mailOptions = {
+      from: `"EMIS Dental" <${process.env.EMAIL_SENDER}>`,
+      to: notifyList,
+      subject: '🦷 Có lịch hẹn mới tại EMIS Dental',
+      text: `Xin chào,
+
+    Một lịch hẹn mới vừa được đặt thông qua website EMIS Dental:
+
+    👤 Họ tên: ${formData.name}
+    📧 Email: ${formData.email}
+    📞 Số điện thoại: ${formData.phone}
+    📅 Ngày: ${formData.date}
+    🕒 Giờ: ${formData.time}
+    💬 Dịch vụ: ${formData.service}
+
+    Vui lòng đăng nhập vào trang quản lý để xem chi tiết và phản hồi:
+    👉 https://emis-dental.netlify.app/login
+
+    Trân trọng,
+    Hệ thống EMIS Dental
+    `
+    };
     return res.status(201).json({ 
       success: true,
       message: 'Appointment request received! We will contact you soon.' 
