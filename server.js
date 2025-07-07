@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import sanitizePackage from 'express-mongo-sanitize';
 import Appointment from './models/appointments.js';
 import axios from 'axios';
+import nodemailer from 'nodemailer';
 // Initialize environment variiables
 dotenv.config();
 
@@ -12,6 +13,14 @@ dotenv.config();
 const app = express();
 
 // 2. Security middlewares
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_SENDER,         // e.g. emisdental@gmail.com
+    pass: process.env.EMAIL_APP_PASSWORD    // Use App Password, NOT real Gmail password
+  }
+});
 
 app.use(cors({
   origin: function (origin, callback) {
