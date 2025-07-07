@@ -169,6 +169,7 @@ app.post('/api/appointments', async (req, res) => {
     Hệ thống EMIS Dental
     `
     };
+    await transporter.sendMail(mailOptions);
     return res.status(201).json({ 
       success: true,
       message: 'Appointment request received! We will contact you soon.' 
