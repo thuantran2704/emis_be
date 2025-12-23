@@ -43,7 +43,7 @@ async function updateFxRate() {
     }
 
     fxCache.rate = vndRate;
-    fxCache.lastUpdated = new Date();
+    fxCache.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
 
     console.log(`💱 FX updated: 1 USD = ${vndRate} VND`);
   } catch (err) {
