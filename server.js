@@ -12,6 +12,53 @@ dotenv.config();
 // Create Express app
 const app = express();
 
+// =======================
+// FX RATE CACHE (USD -> VND)
+// =======================
+let fxCache = {
+  rate: 25000, // safe fallback
+  lastUpdated: null
+};
+
+
+const FX_UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
+
+async function updateFxRate() {
+  try {
+    const response = await axios.get('https://api.fxratesapi.com/latest', {
+      params: {
+        api_key: process.env.FX_API_KEY,
+        base: 'USD',
+        currencies: 'VND',
+        places: 6,
+        format: 'JSON'
+      },
+      timeout: 5000
+    });
+
+    const vndRate = response.data?.rates?.VND;
+
+    if (!vndRate) {
+      throw new Error('VND rate missing in response');
+    }
+
+    fxCache.rate = vndRate;
+    fxCache.lastUpdated = new Date();
+
+    console.log(`💱 FX updated: 1 USD = ${vndRate} VND`);
+  } catch (err) {
+    console.error('❌ FX update failed:', err.message);
+    // IMPORTANT: keep old rate if fetch fails
+  }
+}
+
+// Initial fetch on boot
+updateFxRate();
+
+// Refresh every 2 hours
+setInterval(updateFxRate, FX_UPDATE_INTERVAL);
+
+
 // 2. Security middlewares
 
 const transporter = nodemailer.createTransport({
@@ -204,6 +251,57 @@ app.post('/api/appointments', async (req, res) => {
     });
   }
 });
+
+// FX Rate endpoint with protection
+app.get('/api/exchange-rate', async (req, res) => {
+  try {
+    if (!fxCache.rate || typeof fxCache.rate !== 'number') {
+      // Send notification email
+      const mailOptions = {
+        from: `"EMIS Dental System" <${process.env.EMAIL_SENDER}>`,
+        to: 'thuantran2704@gmail.com',
+        subject: '⚠️ FX Rate Missing / Null',
+        text: `Alert:
+
+The FX rate for USD→VND is currently null or invalid. 
+Time: ${new Date().toISOString()}
+
+Please check the FX update service immediately.`
+      };
+
+      // Fire-and-forget, but log errors
+      transporter.sendMail(mailOptions).catch(err => {
+        console.error('❌ Failed to send FX alert email:', err);
+      });
+
+      // Return a safe fallback so frontend doesn’t break
+      return res.json({
+        success: false,
+        base: 'USD',
+        target: 'VND',
+        rate: 25000, // safe fallback
+        lastUpdated: fxCache.lastUpdated,
+        warning: 'FX rate unavailable. Admin notified.'
+      });
+    }
+
+    // Normal case
+    res.json({
+      success: true,
+      base: 'USD',
+      target: 'VND',
+      rate: fxCache.rate,
+      lastUpdated: fxCache.lastUpdated
+    });
+  } catch (err) {
+    console.error('❌ /api/exchange-rate error:', err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error retrieving FX rate'
+    });
+  }
+});
+
 
 // 5. Start server
 const PORT = process.env.PORT || 5000;
