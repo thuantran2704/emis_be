@@ -252,47 +252,39 @@ app.post('/api/appointments', async (req, res) => {
   }
 });
 
-// FX Rate endpoint with protection
-app.get('/api/exchange-rate', async (req, res) => {
+app.get('/api/exchange-rate', (req, res) => {
   try {
-    if (!fxCache.rate || typeof fxCache.rate !== 'number') {
-      // Send notification email
-      const mailOptions = {
-        from: `"EMIS Dental System" <${process.env.EMAIL_SENDER}>`,
-        to: 'thuantran2704@gmail.com',
-        subject: '⚠️ FX Rate Missing / Null',
-        text: `Alert:
-
-The FX rate for USD→VND is currently null or invalid. 
-Time: ${new Date().toISOString()}
-
-Please check the FX update service immediately.`
-      };
-
-      // Fire-and-forget, but log errors
-      transporter.sendMail(mailOptions).catch(err => {
-        console.error('❌ Failed to send FX alert email:', err);
-      });
-
-      // Return a safe fallback so frontend doesn’t break
+    // Always return cached rate
+    if (typeof fxCache.rate === 'number') {
       return res.json({
-        success: false,
+        success: true,
         base: 'USD',
         target: 'VND',
-        rate: 25000, // safe fallback
-        lastUpdated: fxCache.lastUpdated,
-        warning: 'FX rate unavailable. Admin notified.'
+        rate: fxCache.rate,
+        lastUpdated: fxCache.lastUpdated
       });
     }
 
-    // Normal case
-    res.json({
-      success: true,
+    // Cache corrupted (not a number)
+    console.warn('⚠️ FX cache invalid. Sending alert email...');
+    transporter.sendMail({
+      from: `"EMIS Dental" <${process.env.EMAIL_SENDER}>`,
+      to: 'thuantran2704@gmail.com',
+      subject: '⚠️ FX Rate Corrupted',
+      text: `Alert: The FX rate for USD→VND is invalid.
+Time: ${new Date().toISOString()}`
+    }).catch(err => console.error('❌ Failed to send FX alert email:', err));
+
+    // Return safe fallback
+    return res.json({
+      success: false,
       base: 'USD',
       target: 'VND',
-      rate: fxCache.rate,
-      lastUpdated: fxCache.lastUpdated
+      rate: 25000,
+      lastUpdated: fxCache.lastUpdated,
+      warning: 'FX rate cache invalid. Admin notified.'
     });
+
   } catch (err) {
     console.error('❌ /api/exchange-rate error:', err);
     res.status(500).json({
@@ -301,6 +293,7 @@ Please check the FX update service immediately.`
     });
   }
 });
+
 
 
 // 5. Start server
