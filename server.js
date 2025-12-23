@@ -5,59 +5,13 @@ import dotenv from 'dotenv';
 import sanitizePackage from 'express-mongo-sanitize';
 import Appointment from './models/appointments.js';
 import axios from 'axios';
+import FxRate from './models/fxRate.js';
 import nodemailer from 'nodemailer';
 // Initialize environment variiables
 dotenv.config();
 
 // Create Express app
 const app = express();
-
-// =======================
-// FX RATE CACHE (USD -> VND)
-// =======================
-let fxCache = {
-  rate: 25000, // safe fallback
-  lastUpdated: null
-};
-
-
-const FX_UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
-
-async function updateFxRate() {
-  try {
-    const response = await axios.get('https://api.fxratesapi.com/latest', {
-      params: {
-        api_key: process.env.FX_API_KEY,
-        base: 'USD',
-        currencies: 'VND',
-        places: 6,
-        format: 'JSON'
-      },
-      timeout: 5000
-    });
-
-    const vndRate = response.data?.rates?.VND;
-
-    if (!vndRate) {
-      throw new Error('VND rate missing in response');
-    }
-
-    fxCache.rate = vndRate;
-    fxCache.lastUpdated = new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" });
-
-    console.log(`💱 FX updated: 1 USD = ${vndRate} VND`);
-  } catch (err) {
-    console.error('❌ FX update failed:', err.message);
-    // IMPORTANT: keep old rate if fetch fails
-  }
-}
-
-// Initial fetch on boot
-updateFxRate();
-
-// Refresh every 2 hours
-setInterval(updateFxRate, FX_UPDATE_INTERVAL);
-
 
 // 2. Security middlewares
 
@@ -251,52 +205,78 @@ app.post('/api/appointments', async (req, res) => {
     });
   }
 });
+// 7. rateExchagne
+let fxCache = { rate: null, lastUpdated: null };
+const FX_UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
 
-app.get('/api/exchange-rate', (req, res) => {
+async function fetchFxRateFromApi() {
   try {
-    // Always return cached rate
-    if (typeof fxCache.rate === 'number') {
-      return res.json({
-        success: true,
+    const response = await axios.get('https://api.fxratesapi.com/latest', {
+      params: {
+        api_key: process.env.FX_API_KEY,
         base: 'USD',
-        target: 'VND',
-        rate: fxCache.rate,
-        lastUpdated: fxCache.lastUpdated
-      });
-    }
-
-    // Cache corrupted (not a number)
-    console.warn('⚠️ FX cache invalid. Sending alert email...');
-    transporter.sendMail({
-      from: `"EMIS Dental" <${process.env.EMAIL_SENDER}>`,
-      to: 'thuantran2704@gmail.com',
-      subject: '⚠️ FX Rate Corrupted',
-      text: `Alert: The FX rate for USD→VND is invalid.
-Time: ${new Date().toISOString()}`
-    }).catch(err => console.error('❌ Failed to send FX alert email:', err));
-
-    // Return safe fallback
-    return res.json({
-      success: false,
-      base: 'USD',
-      target: 'VND',
-      rate: 25000,
-      lastUpdated: fxCache.lastUpdated,
-      warning: 'FX rate cache invalid. Admin notified.'
+        currencies: 'VND',
+        places: 6,
+        format: 'JSON'
+      },
+      timeout: 5000
     });
 
+    const vndRate = response.data?.rates?.VND;
+    if (!vndRate) throw new Error('VND rate missing in response');
+
+    const now = new Date();
+
+    // Save to MongoDB (upsert)
+    await FxRate.findOneAndUpdate(
+      {},
+      { rate: vndRate, lastUpdated: now },
+      { upsert: true, new: true }
+    );
+
+    fxCache.rate = vndRate;
+    fxCache.lastUpdated = now;
+
+    console.log(`💱 FX updated: 1 USD = ${vndRate} VND (VN time: ${now.toLocaleString("en-US",{ timeZone:"Asia/Ho_Chi_Minh" })})`);
+    return { rate: vndRate, lastUpdated: now };
   } catch (err) {
-    console.error('❌ /api/exchange-rate error:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Server error retrieving FX rate'
-    });
+    console.error('❌ FX API fetch failed:', err.message);
+    return null;
   }
-});
+}
 
+async function loadFxRate() {
+  try {
+    const doc = await FxRate.findOne({});
+    if (doc) {
+      fxCache.rate = doc.rate;
+      fxCache.lastUpdated = doc.lastUpdated;
+      console.log(`🗄️ Loaded FX rate from DB: ${fxCache.rate} (lastUpdated: ${fxCache.lastUpdated.toLocaleString("en-US",{ timeZone:"Asia/Ho_Chi_Minh" })})`);
+    } else {
+      console.log('No FX rate found in DB, fetching from API...');
+      await fetchFxRateFromApi();
+    }
+  } catch (err) {
+    console.error('❌ Failed to load FX rate from DB:', err);
+    await fetchFxRateFromApi();
+  }
+}
 
+async function getFxRate() {
+  const now = new Date();
+  if (!fxCache.rate || !fxCache.lastUpdated || (now - fxCache.lastUpdated > FX_UPDATE_INTERVAL)) {
+    console.log('FX cache expired or empty, fetching from API...');
+    const result = await fetchFxRateFromApi();
+    if (result) return result;
+  }
+  return fxCache;
+}
 
-// 5. Start server
+// Initial load & interval update
+loadFxRate();
+setInterval(fetchFxRateFromApi, FX_UPDATE_INTERVAL);
+
+// 8. Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on 0.0.0.0:${PORT}`);
