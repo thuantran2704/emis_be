@@ -21,3 +21,23 @@ test('clinic email contains the request details and goes to the Zoho inbox', () 
   }
   assert.doesNotMatch(mail.text, /undefined|netlify\.app|confirmed appointment/i);
 });
+
+test('clinic email groups fields clearly and escapes patient text in HTML', () => {
+  const mail = buildClinicNotification({
+    name: '<Test Patient>',
+    email: 'patient@example.com',
+    phone: '+84 123 456 789',
+    date: new Date('2026-12-05T00:00:00.000Z'),
+    service: 'Dental Implant',
+    message: 'First line\n<script>alert("x")</script>',
+  }, 'sender@gmail.com');
+
+  assert.match(mail.html, /Patient contact/);
+  assert.match(mail.html, /Request details/);
+  assert.match(mail.html, /Message and preferences/);
+  assert.match(mail.html, /Preferred date[\s\S]*2026-12-05/);
+  assert.match(mail.html, /&lt;Test Patient&gt;/);
+  assert.match(mail.html, /First line<br\s*\/?>(?:\s*)?&lt;script&gt;/);
+  assert.doesNotMatch(mail.html, /<script>|<Test Patient>|netlify\.app/);
+  assert.match(mail.text, /PATIENT CONTACT[\s\S]*REQUEST DETAILS[\s\S]*MESSAGE AND PREFERENCES/);
+});
