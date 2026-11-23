@@ -7,6 +7,7 @@ import Appointment from './models/appointments.js';
 import FxRate from './models/fxRate.js';
 import axios from 'axios';
 import nodemailer from 'nodemailer';
+import { buildClinicNotification } from './clinicNotification.js';
 
 // Initialize environment variables
 dotenv.config();
@@ -143,30 +144,7 @@ app.post('/api/appointments', async (req, res) => {
 
     await newAppointment.save();
 
-    const notifyList = ['duonglandai@gmail.com', 'thuantran2704@gmail.com', 'quoctritran2000@gmail.com'];
-    const mailOptions = {
-      from: `"EMIS Dental" <${process.env.EMAIL_SENDER}>`,
-      to: notifyList,
-      subject: '🦷 Có lịch hẹn mới tại EMIS Dental',
-      text: `Xin chào,
-
-Một lịch hẹn mới vừa được đặt thông qua website EMIS Dental:
-
-👤 Họ tên: ${formData.name}
-📧 Email: ${formData.email}
-📞 Số điện thoại: ${formData.phone}
-📅 Ngày: ${formData.date}
-🕒 Giờ: ${formData.time}
-💬 Dịch vụ: ${formData.service}
-
-Vui lòng đăng nhập vào trang quản lý để xem chi tiết và phản hồi:
-👉 https://emis-dental.netlify.app/login
-
-Trân trọng,
-Hệ thống EMIS Dental`
-    };
-
-    await transporter.sendMail(mailOptions);
+    await transporter.sendMail(buildClinicNotification(newAppointment, process.env.EMAIL_SENDER));
 
     return res.status(201).json({
       success: true,
